@@ -9,22 +9,213 @@ output: github_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
-
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r}
+library(tidyverse)
 ```
 
-## Including Plots
+## Problem 1
 
-You can also embed plots, for example:
+```{r}
+pols_month <- read_csv("fivethirtyeight_datasets/pols-month.csv")
+pols_month
+dim(pols_month)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+
+pols_month_cleaned <- pols_month %>%
+  separate(mon, into = c("year","month","day"), convert = TRUE) %>%
+  mutate(
+    month = tolower(month.name[month]),
+    president = case_when(
+      prez_gop == 1 ~ "gop",
+      prez_dem == 1 ~ "dem",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  select(-day, -prez_gop, -prez_dem)
+
+pols_month_cleaned
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+snp <- read_csv("fivethirtyeight_datasets/snp.csv")
+snp
+dim(snp)
+
+snp_cleaned <- snp %>% 
+  mutate(date = mdy(date)) %>% 
+  separate(date, into = c("year","month","day"), convert = TRUE) %>% 
+  mutate(month = tolower(month.name[month])) %>% 
+  select(year, month, close) %>% 
+  arrange(year, match(month, tolower(month.name)))
+
+snp_cleaned
+```
+
+```{r}
+unemployment <- read_csv("fivethirtyeight_datasets/unemployment.csv")
+unemployment
+dim(unemployment)
+
+unemployment_cleaned <- unemployment %>% 
+  pivot_longer(
+    cols = Jan:Dec,
+    names_to = "month",
+    values_to = "unemployment"
+  ) %>% 
+  mutate(
+    month = tolower(month.name[match(month, month.abb)])
+  ) %>% 
+  rename(year = Year) %>%
+  arrange(year, match(month, tolower(month.name)))
+
+unemployment_cleaned
+```
+
+```{r}
+merged_data <- pols_month_cleaned %>%
+  left_join(snp_cleaned, by = c("year", "month")) %>%
+  left_join(unemployment_cleaned, by = c("year", "month"))
+
+merged_data
+```
+
+The pols-month.csv file contains 822 monthly observations between 1947 and 2015, describing the number of national politicians (governors, senators, and representatives) by party affiliation, along with the party of the sitting president. The snp.csv file contains 787 monthly observations from 1950 to 2015, which is the closing values of the Standard & Poor’s stock market index (S&P). The unemployment.csv file contains 816 monthly observations between 1948 and 2015, reporting the percentage of unemployment for each month.
+
+After cleaning and tidying, these datasets were merged by year and month, resulting in a unified dataset that contains political variables (party of president and counts of governors, senators, and representatives), economic indicators (S&P index values), and employment data (monthly unemployment rates). This merged dataset allows for analyses of the relationships between political leadership and economic performance over time.
+
+
+## Problem 2
+
+```{r}
+library(readxl)
+```
+
+
+```{r}
+mr_trash_wheel <- read_excel("202509 Trash Wheel Collection Data.xlsx", 
+                             sheet = "Mr. Trash Wheel", 
+                             skip = 1) %>%
+  janitor::clean_names() %>%
+  select(-starts_with("x")) %>%
+  filter(!is.na(dumpster)) %>%
+  separate(date, into = c("year","month","day"), convert = TRUE) %>% 
+  mutate(sports_balls = as.integer(round(sports_balls)),
+         source = "Mr. Trash Wheel")
+
+mr_trash_wheel
+```
+
+
+
+```{r}
+prof_trash_wheel <- read_excel("202509 Trash Wheel Collection Data.xlsx",
+                               sheet = "Professor Trash Wheel",
+                               skip = 1) %>%
+  janitor::clean_names() %>%
+  filter(!is.na(date)) %>%
+  separate(date, into = c("year","month","day"), convert = TRUE) %>% 
+  mutate(
+    source = "Professor Trash Wheel"
+  )
+
+prof_trash_wheel
+```
+
+```{r}
+gwynns_trash_wheel <- read_excel("202509 Trash Wheel Collection Data.xlsx",
+                                 sheet = "Gwynns Falls Trash Wheel",
+                                 skip = 1) %>%
+  janitor::clean_names() %>%
+  filter(!is.na(date)) %>%
+  separate(date, into = c("year","month","day"), convert = TRUE) %>% 
+  mutate(
+    source = "Gwynns Falls Trash Wheel"
+  )
+
+gwynns_trash_wheel
+```
+
+
+```{r}
+all_trash <- bind_rows(mr_trash_wheel,
+                       prof_trash_wheel,
+                       gwynns_trash_wheel)
+all_trash
+```
+
+
+```{r}
+nrow(all_trash)
+
+prof_trash_wheel %>%
+  summarise(total_weight_tons = sum(weight_tons, na.rm = TRUE))
+
+gwynns_trash_wheel %>%
+  filter(year == 2022, month == 6) %>%
+  summarise(total_cig_butts = sum(cigarette_butts, na.rm = TRUE))
+```
+
+After cleaning and combining the datasets from Mr. Trash Wheel, Professor Trash Wheel, and Gwynns Falls Trash Wheel, the resulting dataset contains `r nrow(all_trash)` observations. Key variables include the date of collection (`year`, `month`, `day`), the amount of trash collected in tons (`weight_tons`), and counts of common items such as plastic bottles, polystyrene, cigarette butts, glass bottles, and plastic bags. For example, the total weight of trash collected by Professor Trash Wheel was `r sum(prof_trash_wheel$weight_tons, na.rm = TRUE)` tons. In addition, Gwynns Falls Trash Wheel collected `r sum(gwynns_trash_wheel$cigarette_butts[gwynns_trash_wheel$year == 2022 & gwynns_trash_wheel$month == "June"], na.rm = TRUE)` cigarette butts in June of 2022.
+
+
+
+## Problem 3
+
+```{r}
+zip_info <- read_csv("zillow_data/Zip Codes.csv")
+zillow <- read_csv("zillow_data/Zip_zori_uc_sfrcondomfr_sm_month_NYC.csv")
+
+zip_info
+zillow
+```
+
+
+
+```{r}
+zillow_long <- zillow %>%
+  pivot_longer(
+    cols = matches("^20"),
+    names_to = "date",
+    values_to = "rent_price"
+  ) %>%
+  mutate(date = as.Date(date))
+
+zillow_long
+```
+
+
+```{r}
+final_data <- zillow_long %>%
+  left_join(zip_info, by = c("RegionName" = "ZipCode"))
+
+final_data
+```
+
+
+```{r}
+nrow(final_data)
+n_distinct(final_data$RegionName)
+n_distinct(final_data$Neighborhood)
+```
+
+```{r}
+setdiff(zip_info$ZipCode, zillow$RegionName)
+```
+ZIP codes such as 10101, 10118, and 10499 appear in the mapping dataset but are not included in Zillow’s rental data.
+
+
+```{r}
+covid_change <- final_data %>%
+  filter(date %in% c("2020-01-31","2021-01-31")) %>%
+  pivot_wider(names_from = date, values_from = rent_price) %>%
+  mutate(drop = (`2021-01-31` - `2020-01-31`) / `2020-01-31`) %>%
+  arrange(drop) %>%
+  slice_head(n=10)
+
+covid_change
+```
+
+Rental prices dropped most sharply in Manhattan ZIP codes such as 10004 (Financial District) and 10009 (East Village).
+
+
